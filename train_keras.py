@@ -92,8 +92,8 @@ def main():
     # data
     input_file_path = os.path.join(os.path.dirname(__file__), 'input.txt')
     batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
-    block_size = 40#256 #1024
-    vocab_size = 1000#5000  # Limits parameters in model.
+    block_size = 256 #1024
+    vocab_size = 5000  # Limits parameters in model.
 
     num_tokens_generated = 40#500
 
@@ -107,7 +107,7 @@ def main():
     # adamw optimizer
     learning_rate = 6e-4 # max learning rate
     
-    epochs = 5#10
+    epochs = 10
 
     # model init
     model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size, 
