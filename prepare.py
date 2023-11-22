@@ -5,86 +5,100 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import TextVectorization
 
-def prepare_lm_inputs_labels(text, vectorize_layer):
-    """
-    Shift word sequences by 1 position so that the target for position (i) is
-    word at position (i+1). The model will use all words up till position (i)
-    to predict the next word.
-    """
-    text = tf.expand_dims(text, -1)
-    tokenized_sentences = vectorize_layer(text)
-    x = tokenized_sentences[:, :-1]
-    y = tokenized_sentences[:, 1:]
-    return x, y
+def load_and_split_data(config):
+    if not os.path.exists(config.input_file_path):
+        data_url = 'https://gutenberg.org/cache/epub/4099/pg4099.txt' #The Angel in the House by Coventry Patmore
+        with open(config.input_file_path, 'w') as f:
+            f.write(requests.get(data_url).text)
 
-def get_vectorizer_ds(ds, config):
+    with open(config.input_file_path, 'r') as f:
+        data = f.read()
+
+    if len(data) == 0:
+        raise Exception("File is empty")
+
+    n = len(data)
+    train = data[:int(n*0.9)]
+    val = data[int(n*0.9):]
+
+    return train, val
+
+def prepare_dataset(config, data):
     # Create a vectorization layer and adapt it to the text
-    vectorize_layer = TextVectorization(
+    vectorizer = TextVectorization(
         max_tokens=config.vocab_size - 1,
         output_mode="int",
         output_sequence_length=config.block_size + 1,
     )
 
     # Adapt the layer to the data
-    vectorize_layer.adapt(ds)
-    vocab = vectorize_layer.get_vocabulary()  # To get words back from token indices
+    vectorizer.adapt([data])
 
-    return vocab, prepare_lm_inputs_labels(ds, vectorize_layer)
+    """
+    Shift word sequences by 1 position so that the target for position (i) is
+    word at position (i+1). The model will use all words up till position (i)
+    to predict the next word.
+    """
+    text = tf.expand_dims(data, -1)
+    tokenized_sentences = vectorizer(text)
+    # print("tokenized_sentences.shape:", tokenized_sentences.shape)
 
-def batch_ds(batch_size, vectorized_texts, vectorized_labels, raw_texts):
+    x = tokenized_sentences[:, :-1]
+    # print("x.shape:", x.shape)
+
+    y = tokenized_sentences[:, 1:]
+    # print("y.shape:", y.shape)
+
     # Create a tf.data.Dataset from the vectorized texts and labels
-    dataset = tf.data.Dataset.from_tensor_slices((vectorized_texts, vectorized_labels))
+    dataset = tf.data.Dataset.from_tensor_slices((x, y))
 
     # Batch the dataset
-    dataset = dataset.batch(batch_size)
+    dataset = dataset.batch(config.batch_size)
 
     # Optionally shuffle the dataset
-    dataset = dataset.shuffle(buffer_size=len(raw_texts))
-
-    return dataset
-
-def get_dataset(config):
-    if not os.path.exists(config.input_file_path):
-        data_url = 'https://gutenberg.org/cache/epub/72132/pg72132.txt'
-        with open(config.input_file_path, 'w') as f:
-            f.write(requests.get(data_url).text)
-
-    with open(config.input_file_path, 'r') as f:
-        data = f.read()
-    n = len(data)
-    train_list = data[:int(n*0.9)]
-    val_list = data[int(n*0.9):]
-
-    train_list = list(train_list)
-    val_list = list(val_list)
-    # print(type(train_list))
-
-    # Tokenize your text using the TextVectorization layer
-    vocab_train, (vectorized_train, vectorized_train_label) = get_vectorizer_ds(train_list, config)
-    # train_data = train_data.prefetch(tf.data.AUTOTUNE)
-    train_data = batch_ds(config.batch_size, vectorized_train, vectorized_train_label, train_list)
-
-    vocab_test, (vectorized_val, vectorized_val_label) = get_vectorizer_ds(val_list, config)
-    val_data = batch_ds(config.batch_size, vectorized_val, vectorized_val_label, val_list)
-
-    # val_data = get_vectorizer(val_list, config)
-    # val_data = val_data.map(prepare_lm_inputs_labels)
-    # val_data = val_data.prefetch(tf.data.AUTOTUNE)
-
-    # Print the number of batches in each dataset
-    print(f"Number of batches in training dataset: {len(train_data)}")
-    print(f"Number of batches in validation dataset: {len(val_data)}")
+    dataset = dataset.shuffle(buffer_size=len(data))
 
     # # Iterate over the batches for training
-    # for batch in train_data.take(1):
+    # for batch in dataset.take(1):
     #     inputs, targets = batch
     #     print(inputs, targets)
     #     # Your training step goes here
 
-    # # Iterate over the batches for validation
-    # for batch in val_data.take(1):
-    #     inputs, targets = batch
-    #     print(inputs, targets)
-    #     # Your validation step goes here
+    return dataset, vectorizer
 
-    return train_data, val_data, vocab_train, vocab_test
+def get_dataset(config):
+    train, val = load_and_split_data(config)
+
+    train_data, train_vectorizer = prepare_dataset(config, train)
+    val_data, val_vectorizer = prepare_dataset(config, val)
+
+
+    # ############################################################################
+    # print("Original text:\n", "".join(train_data))
+
+    # # Tokenize the text using the TextVectorization layer
+    # tokenized_data = train_vectorizer(train_data)
+
+    # print("Numerical data:\n", tokenized_data)
+
+    # # Get the vocabulary
+    # vocabulary = train_vectorizer.get_vocabulary()
+    # print("Vocabulary:\n", vocabulary)
+
+    # # Reconvert numerical vectors to words
+    # reconstructed_text = []
+    # for vector in tokenized_data.numpy():
+    #     words = vocabulary[vector]
+    #     reconstructed_text.append(" ".join(words))
+
+    # print("Reconstructed text:\n", reconstructed_text)
+    # ############################################################################
+
+
+    # Print the number of batches in each dataset
+    print(f"Number of batches in training dataset: {len(train_data)}")
+    print(f"Number of batches in validation dataset: {len(val_data)}")
+    print("Length of vocab:", len(train_vectorizer.get_vocabulary()))
+
+
+    return train_data, val_data, train_vectorizer, val_vectorizer

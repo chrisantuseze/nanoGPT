@@ -54,7 +54,7 @@ class CausalSelfAttention(layers.Layer):
 
         out = self.resid_dropout(self.c_proj(out))
         return out
-    
+
 
 class MLP(layers.Layer):
     def __init__(self, config):
@@ -68,7 +68,7 @@ class MLP(layers.Layer):
         x = self.c_proj(x)
         x = self.dropout(x)
         return x
-    
+
 
 class Block(layers.Layer):
     def __init__(self, config):
@@ -125,7 +125,7 @@ class GPT(layers.Layer):
         # forward the GPT model itself
         tok_emb = self.transformer['wte'](inputs) # token embeddings of shape (b, t, n_embd)
         pos_emb = self.transformer['wpe'](pos) # position embeddings of shape (t, n_embd)
-        
+
         # print("tf.shape(tok_emb):", tok_emb.shape)
         # print("tf.shape(pos_emb):", pos_emb.shape)
 
@@ -143,37 +143,6 @@ class GPT(layers.Layer):
         else:
             # inference-time mini-optimization: only forward the lm_head on the very last position
             logits = self.lm_head(x) # note: using list [-1] to preserve the time dim
-            loss = None
 
-        return logits#, loss
-
-    def generate_text(self, tokenizer, initial_prompt, generation_length=100):
-        generated_text = initial_prompt
-        for _ in range(generation_length):
-            # Convert the current prompt into model inputs
-            input_ids = tokenizer.encode(generated_text)
-
-            # Pad or truncate the input sequence to match the model's expected input length
-            if len(input_ids) > self.config.block_size:
-                input_ids = input_ids[-self.config.block_size:]
-            else:
-                padding_length = self.config.block_size - len(input_ids)
-                input_ids = [0] * padding_length + input_ids  # Prepend zeros for padding
-
-            input_ids = tf.expand_dims(input_ids, 0)
-
-            # Get predictions for the next token
-            logits = self(input_ids)
-            predictions = logits[:, -1, :]
-
-            # Sample the output (using tf.random.categorical) to generate token ID
-            token_id = tf.random.categorical(predictions, num_samples=1)[0, 0].numpy()
-
-            # Convert token ID back to character
-            token = tokenizer.decode([token_id])
-
-            # Append the token to the generated text
-            generated_text += token
-
-        return generated_text
+        return logits
 
